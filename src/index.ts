@@ -2,6 +2,7 @@ import { createConfig, getDeploymentName, isValidModel } from './config';
 import { AzureKeyCredential } from "@azure/core-auth";
 import { default as aiClient } from "@azure-rest/ai-inference";
 import type { ChatCompletionRequest, ChatCompletionResponse, ErrorResponse } from './types';
+import { keyManager, ApiKeyError } from './auth';
 
 export interface Env {
   AZURE_API_KEY: string;
@@ -98,9 +99,21 @@ function stripUnsupportedParameters(request: ChatCompletionRequest): {
   };
 }
 
-function createAzureClient(env: Env) {
+async function createAzureClient(headers: Headers, env: Env) {
   const endpoint = env.AZURE_ENDPOINT || 'https://models.inference.ai.azure.com';
-  return aiClient(endpoint, new AzureKeyCredential(env.AZURE_API_KEY));
+  try {
+    const mockRequest = new Request('https://dummy.url', { headers });
+    const apiKey = await keyManager.getAzureKey(mockRequest, env);
+    if (!(await keyManager.validateKey(apiKey))) {
+      throw new ApiKeyError('Invalid Azure API key');
+    }
+    return aiClient(endpoint, new AzureKeyCredential(apiKey));
+  } catch (error) {
+    if (error instanceof ApiKeyError) {
+      throw error;
+    }
+    throw new ApiKeyError('Failed to authenticate with Azure');
+  }
 }
 
 function handleError(error: unknown): Response {
@@ -119,12 +132,13 @@ function handleError(error: unknown): Response {
 }
 
 async function handleAzureChatCompletion(
-  request: ChatCompletionRequest, 
+  originalRequest: Request,
+  requestBody: ChatCompletionRequest,
   env: Env,
   config: ReturnType<typeof createConfig>
 ): Promise<Response> {
   try {
-    const validation = validateParameters(request);
+    const validation = validateParameters(requestBody);
     if (!validation.valid) {
       return new Response(JSON.stringify({
         error: {
@@ -138,28 +152,28 @@ async function handleAzureChatCompletion(
       });
     }
 
-    const client = createAzureClient(env);
-    const modelName = request.model || config.defaultModel;
+    const client = await createAzureClient(originalRequest.headers, env);
+    const modelName = requestBody.model || config.defaultModel;
     const deploymentName = getDeploymentName(modelName, config);
 
-    console.log('Making request to Azure AI with messages:', request.messages);
+    console.log('Making request to Azure AI with messages:', requestBody.messages);
 
-    const requestParams = stripUnsupportedParameters(request);
+    const requestParams = stripUnsupportedParameters(requestBody);
     console.log('Azure AI request payload:', JSON.stringify(requestParams, null, 2));
     
-    const response = await client.path("/chat/completions").post({
+    const response = await (await client).path("/chat/completions").post({
       queryParameters: {
         'api-version': '2024-12-01-preview'
       },
       body: {
-        messages: request.messages.map(msg => ({
+        messages: requestBody.messages.map((msg: { role: string; content: string; }) => ({
           role: msg.role,
           content: msg.content
         })),
         model: deploymentName,
-        temperature: request.temperature,
+        temperature: requestBody.temperature,
         max_tokens: requestParams.max_tokens,
-        top_p: request.top_p,
+        top_p: requestBody.top_p,
         stream: false
       }
     });
@@ -316,7 +330,8 @@ async function handleGitHubChatCompletion(
 async function handleChatCompletion(request: Request, env: Env): Promise<Response> {
   try {
     const config = createConfig(env);
-    const requestBody: ChatCompletionRequest = await request.json();
+    const clonedRequest = request.clone(); // Clone request before consuming body
+    const requestBody: ChatCompletionRequest = await clonedRequest.json();
     const modelName = requestBody.model || config.defaultModel;
 
     if (!isValidModel(modelName, config)) {
@@ -333,7 +348,7 @@ async function handleChatCompletion(request: Request, env: Env): Promise<Respons
     }
     
     // All models are now handled by Azure
-    return handleAzureChatCompletion(requestBody, env, config);
+    return handleAzureChatCompletion(request, requestBody, env, config);
   } catch (error) {
     return handleError(error);
   }
