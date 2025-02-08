@@ -1,6 +1,6 @@
 # Azure AI Proxy Cloudflare Worker
 
-This Cloudflare Worker serves as a proxy for Azure AI services, providing a standardized API interface similar to OpenAI's API. It supports model mapping and handles chat completions through Azure's AI services.
+This Cloudflare Worker serves as a proxy for AI services, primarily Azure AI services but now with support for other providers. It provides a standardized API interface similar to OpenAI's API, supporting model mapping and chat completions through various AI services.
 
 ## Deployment URL
 
@@ -16,9 +16,20 @@ npm install
 
 3. Configure environment variables by creating a `.dev.vars` file with the following content:
 ```env
+# Required Azure configuration
 AZURE_API_KEY=your_azure_api_key
+
+# Optional: Azure endpoint configuration (choose one approach)
 AZURE_ENDPOINT=https://models.inference.ai.azure.com
-MODEL_MAPPINGS={"gpt-4":"gpt-4","gpt-4-turbo":"gpt-4-turbo","gpt-4-vision":"gpt-4-vision","gpt-3.5":"gpt-35-turbo","DeepSeek-R1":"deepseek-r1"}
+# Or for traditional Azure OpenAI:
+AZURE_RESOURCE_NAME=your_resource_name
+AZURE_DEPLOYMENT_NAME=your_deployment_name
+
+# Optional: GitHub configuration
+GITHUB_API_KEY=your_github_api_key
+
+# Model mappings configuration
+MODEL_MAPPINGS={"gpt-4o":"gpt-4o","gpt-4o-mini":"gpt-4o-mini","DeepSeek-R1":"deepseek-r1"}
 ```
 
 ## Development
@@ -49,14 +60,14 @@ Example response:
   "object": "list",
   "data": [
     {
-      "id": "gpt-4",
+      "id": "gpt-4-turbo",
       "object": "model",
       "created": 1707393369,
       "owned_by": "azure",
       "permission": [],
-      "root": "gpt-4",
+      "root": "gpt-4-turbo",
       "parent": null,
-      "context_window": 8192,
+      "context_window": 128000,
       "max_tokens": 4096
     }
   ]
@@ -72,7 +83,7 @@ POST /v1/chat/completions
 Request body:
 ```json
 {
-  "model": "gpt-4",
+  "model": "gpt-4-turbo",
   "messages": [
     {
       "role": "user",
@@ -90,7 +101,7 @@ Response:
   "id": "chatcmpl-123",
   "object": "chat.completion",
   "created": 1707393369,
-  "model": "gpt-4",
+  "model": "gpt-4-turbo",
   "choices": [
     {
       "index": 0,
@@ -108,16 +119,32 @@ Response:
 
 ### Model Mappings
 
-Model mappings are defined in two places:
+Model capabilities are defined in `src/models.ts`. Current supported models include:
 
-1. `.dev.vars` or `wrangler.toml`: Maps external model names to Azure deployment names
-2. `src/models.ts`: Defines model capabilities and properties
+- **GPT-4**: Context window: 8192, Max tokens: 4096
+- **GPT-4-Turbo**: Context window: 128000, Max tokens: 4096, Vision support
+- **DeepSeek-R1**: Context window: 32768, Max tokens: 8192 (via GitHub provider)
 
 ### Environment Variables
 
 - `AZURE_API_KEY`: Your Azure API key (required)
 - `AZURE_ENDPOINT`: Azure endpoint URL (defaults to https://models.inference.ai.azure.com)
-- `MODEL_MAPPINGS`: JSON string mapping model names to Azure deployments
+- `AZURE_RESOURCE_NAME`: Your Azure OpenAI resource name (optional, for traditional Azure OpenAI setup)
+- `AZURE_DEPLOYMENT_NAME`: Your Azure OpenAI deployment name (optional, for traditional Azure OpenAI setup)
+- `GITHUB_API_KEY`: Your GitHub API key (optional, for GitHub provider access)
+- `MODEL_MAPPINGS`: JSON string mapping model names to deployments
+
+### Providers
+
+The proxy now supports multiple AI providers:
+
+1. **Azure AI** (Primary provider)
+   - Supports both modern AI Inference endpoints and traditional Azure OpenAI endpoints
+   - Configurable through environment variables
+
+2. **GitHub** (Secondary provider)
+   - Support for models like DeepSeek-R1
+   - Requires GitHub API key configuration
 
 ## Deployment
 
