@@ -2,10 +2,6 @@
 
 This Cloudflare Worker serves as a proxy for AI services, primarily Azure AI services but now with support for other providers. It provides a standardized API interface similar to OpenAI's API, supporting model mapping and chat completions through various AI services.
 
-## Deployment URL
-
-The worker is deployed at: https://az-proxy-worker.roccor.workers.dev
-
 ## Setup
 
 1. Clone the repository
