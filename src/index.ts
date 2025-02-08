@@ -339,19 +339,63 @@ async function handleChatCompletion(request: Request, env: Env): Promise<Respons
   }
 }
 
+import { modelMappings as modelCapabilities } from './models';
+
+async function handleModels(request: Request, env: Env): Promise<Response> {
+  if (request.method !== 'GET') {
+    return new Response('Method not allowed', { status: 405 });
+  }
+
+  const config = createConfig(env);
+  const configMappings = config.modelMappings;
+
+  const response = {
+    object: 'list',
+    data: Object.entries(configMappings).map(([id, deploymentName]) => {
+      const capabilities = modelCapabilities[id] || {
+        capabilities: {
+          contextWindow: 8192,
+          maxTokens: 4096,
+          supportsFunctions: false,
+          supportsVision: false
+        }
+      };
+
+      return {
+        id,
+        object: 'model',
+        created: Math.floor(Date.now() / 1000),
+        owned_by: capabilities.provider || 'azure',
+        permission: [],
+        root: id,
+        parent: null,
+        context_window: capabilities.capabilities.contextWindow,
+        max_tokens: capabilities.capabilities.maxTokens
+      };
+    })
+  };
+
+  return new Response(JSON.stringify(response, null, 2), {
+    headers: { 'Content-Type': 'application/json' }
+  });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     console.log('Received request:', request.method, request.url);
     
-    if (request.method !== 'POST') {
-      return new Response('Method not allowed', { status: 405 });
-    }
-
     const url = new URL(request.url);
     console.log('Path:', url.pathname);
     
     // Handle different API endpoints
+    if (url.pathname === '/v1/models') {
+      return handleModels(request, env);
+    }
+    
     if (url.pathname === '/v1/chat/completions') {
+      if (request.method !== 'POST') {
+        return new Response('Method not allowed', { status: 405 });
+      }
       return handleChatCompletion(request, env);
     }
     
