@@ -17,16 +17,13 @@ npm install
 3. Configure environment variables by creating a `.dev.vars` file with the following content:
 ```env
 # Required Azure configuration
-AZURE_API_KEY=your_azure_api_key
+AZURE_API_KEY=your_azure_api_key/GitHub_personal_access_token
 
 # Optional: Azure endpoint configuration (choose one approach)
 AZURE_ENDPOINT=https://models.inference.ai.azure.com
 # Or for traditional Azure OpenAI:
 AZURE_RESOURCE_NAME=your_resource_name
 AZURE_DEPLOYMENT_NAME=your_deployment_name
-
-# Optional: GitHub configuration
-GITHUB_API_KEY=your_github_api_key
 
 # Model mappings configuration
 MODEL_MAPPINGS={"gpt-4o":"gpt-4o","gpt-4o-mini":"gpt-4o-mini","DeepSeek-R1":"deepseek-r1"}
